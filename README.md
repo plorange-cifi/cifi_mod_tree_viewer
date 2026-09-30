@@ -17,8 +17,6 @@ of very-high-magnitude cost progression while staying navigable. It's an
 independent fan project — not affiliated with, endorsed by, or built using
 assets from that game.
 
-![screenshot placeholder](docs/screenshot.png)
-
 ## Features
 
 - **Magnitude-aware vertical scale** — position is `exponent + (mantissa-1)/9`,
