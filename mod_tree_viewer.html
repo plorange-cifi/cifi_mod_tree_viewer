@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mod Tree — Vertical Mockup</title>
+<style>
+  :root {
+    --bg: #0f0505;
+    --panel: #1c0c0c;
+    --line: #3a1414;
+    --border: #b32626;
+    --border-dim: #5c1c1c;
+    --text: #ece4e0;
+    --text-dim: #a9908c;
+    --accent: #e6c34a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+
+  #topbar {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; z-index: 20;
+  }
+  #topbar h1 { font-size: 15px; font-weight: 600; margin: 0; margin-right: 8px; color: var(--text); }
+  #topbar label { font-size: 12px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
+  #topbar input[type=file] { font-size: 11px; color: var(--text-dim); max-width: 150px; }
+  #topbar button {
+    background: transparent; border: 1px solid var(--border-dim); color: var(--text);
+    padding: 5px 10px; border-radius: 4px; font-size: 12px; cursor: pointer;
+  }
+  #topbar button:hover { border-color: var(--border); }
+  #status { font-size: 11px; color: var(--text-dim); margin-left: auto; }
+
+  #body { display: flex; height: calc(100% - 49px); max-width: 2000px; width: 100%; margin: 0 auto; }
+
+  #scrollArea { flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; }
+  #chart { position: relative; }
+
+  .decade-line { position: absolute; left: 0; right: 0; border-top: 1px solid var(--line); }
+  .decade-label {
+    position: absolute; left: 6px; font-size: 10px; color: var(--text-dim);
+    transform: translateY(-50%); background: var(--bg); padding: 0 4px;
+    z-index: 2; pointer-events: none;
+  }
+  .decile-tick { position: absolute; left: 0; width: 8px; border-top: 1px solid var(--line); opacity: 0.6; }
+
+  .node {
+    position: absolute; width: 42px; height: 42px; margin-left: -21px; margin-top: -21px;
+    border-radius: 6px; border: 2px solid var(--border-dim);
+    background: #2a1010; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; color: var(--text-dim);
+    transition: left 0.35s ease, opacity 0.25s ease, border-color 0.2s ease, background 0.2s ease;
+    opacity: 0; pointer-events: none;
+  }
+  .node.visible { opacity: 1; pointer-events: auto; }
+  .node.bought { border-color: var(--border); background: #401414; color: var(--text); }
+  .node.bought.flash { border-color: var(--accent); }
+  .node img { width: 100%; height: 100%; object-fit: cover; border-radius: 4px; }
+  .node-level-badge {
+    position: absolute; bottom: 2px; left: 0; right: 0; text-align: center;
+    font-size: 9px; color: var(--text-dim); pointer-events: none;
+    text-shadow: 0 0 2px #000, 0 0 2px #000;
+  }
+  /* Plaques always render above condensed circles when their vertical positions overlap. */
+  .node { z-index: 10; }
+  .level-dot { z-index: 2; }
+
+  .level-dot {
+    position: absolute; width: 18px; height: 18px; margin-left: -9px; margin-top: -9px;
+    border-radius: 50%; border: 1.5px solid var(--border-dim);
+    background: #2a1010; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 8px; color: var(--text-dim); line-height: 1;
+    transition: left 0.35s ease, opacity 0.25s ease, border-color 0.2s ease, background 0.2s ease;
+    opacity: 0; pointer-events: none;
+  }
+  .level-dot.visible { opacity: 1; pointer-events: auto; }
+  .level-dot.bought { border-color: var(--border); background: #401414; color: var(--text); }
+  .level-dot.bought.flash { border-color: var(--accent); }
+  .node.locked-level, .level-dot.locked-level {
+    opacity: 0.45;
+    filter: saturate(0.45);
+  }
+
+  .mod-label {
+    position: absolute; font-size: 10px; color: var(--text-dim); white-space: nowrap;
+    transform: translate(-50%, -100%); margin-top: -6px;
+    transition: left 0.35s ease, opacity 0.25s ease; opacity: 0; pointer-events: none;
+    z-index: 500;
+  }
+  .mod-label.visible { opacity: 1; }
+
+  svg#links { position: absolute; top: 0; left: 0; overflow: visible; }
+  svg#links line { stroke: var(--text-dim); stroke-width: 1.5; opacity: 0.5; }
+  svg#links line.dashed { stroke-dasharray: 3 3; opacity: 0.35; }
+  svg#links line.mod-chain-line { stroke-dasharray: 2 3; stroke-width: 1; opacity: 0.45; }
+
+  #tooltip {
+    position: fixed; pointer-events: none; background: #000; border: 1px solid var(--border-dim);
+    padding: 6px 8px; font-size: 11px; border-radius: 4px; display: none; z-index: 10001; max-width: 220px;
+  }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1>Mod Tree — Vertical</h1>
+  <label>mods.csv <input type="file" id="modsFile" accept=".csv"></label>
+  <label>connectors.csv <input type="file" id="connectorsFile" accept=".csv"></label>
+  <button id="loadSynthetic">Load synthetic data</button>
+  <label><input type="checkbox" id="showLocked" checked> show locked mods</label>
+  <label><input type="checkbox" id="thinCircles" checked> show 1 in 10 circles for mods over 30 levels</label>
+  <label>bought through <input type="text" id="boughtThrough" placeholder="10b" style="width:58px"></label>
+  <button id="applyBoughtThrough">Apply</button>
+  <button id="clearBoughtThrough">Clear</button>
+  <label>px / decade <input type="range" id="scaleSlider" min="120" max="480" value="260" style="width:100px"></label>
+  <span id="status">no data loaded</span>
+</div>
+
+<div id="body">
+  <div id="scrollArea">
+    <div id="chart">
+      <svg id="links"></svg>
+    </div>
+  </div>
+</div>
+
+<div id="tooltip"></div>
+
+<script>
+(function () {
+  // ---------- state ----------
+  let mods = {};      // code -> { code, name, type, x, levels:[{level,cost,image}] }
+  let edges = [];      // { child, parent }
+  let boughtLevels = new Set(); // "code:level"
+  let pxPerDecade = 260;
+  let minPos = 0, maxPos = 1;
+  const TOP_PAD = 60, BOTTOM_PAD = 200, LEFT_PAD = 64, RIGHT_PAD = 40;
+  const COL_MIN_WIDTH = 70;
+
+  const trackColors = {
+    MP: '#e63946', Cells: '#39ff14', Shards: '#00d9ff', Research: '#f4a261',
+    AP: '#7fa6ff', Materials: '#6a994e', RP: '#f77f00'
+  };
+  function colorFor(type) { return trackColors[type] || '#8a8a8a'; }
+
+  const chart = document.getElementById('chart');
+  const linksSvg = document.getElementById('links');
+  const scrollArea = document.getElementById('scrollArea');
+  const statusEl = document.getElementById('status');
+  const tooltip = document.getElementById('tooltip');
+  const showLockedBox = document.getElementById('showLocked');
+  const thinCirclesBox = document.getElementById('thinCircles');
+  const boughtThroughInput = document.getElementById('boughtThrough');
+  const applyBoughtThroughBtn = document.getElementById('applyBoughtThrough');
+  const clearBoughtThroughBtn = document.getElementById('clearBoughtThrough');
+
+  // ---------- CSV parsing (no external deps) ----------
+  function splitCsvLine(line) {
+    const out = []; let cur = ''; let q = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (q) {
+        if (ch === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else q = false; }
+        else cur += ch;
+      } else {
+        if (ch === '"') q = true;
+        else if (ch === ',') { out.push(cur); cur = ''; }
+        else cur += ch;
+      }
+    }
+    out.push(cur);
+    return out;
+  }
+  function parseCsv(text) {
+    const lines = text.split(/\r\n|\n/).filter(l => l.trim().length > 0);
+    if (!lines.length) return [];
+    const headers = splitCsvLine(lines[0]).map(h => h.trim());
+    return lines.slice(1).map(line => {
+      const vals = splitCsvLine(line);
+      const row = {};
+      headers.forEach((h, i) => row[h] = (vals[i] ?? '').trim());
+      return row;
+    });
+  }
+
+  function parseThreshold(str) {
+    str = String(str).trim();
+    if (!str) return null;
+    return parseBigCost(str);
+  }
+
+  function costAtOrBelow(cost, threshold) {
+    if (!cost || !threshold) return false;
+    if (cost.exponent !== threshold.exponent) return cost.exponent < threshold.exponent;
+    return cost.mantissa <= threshold.mantissa;
+  }
+
+  const SUFFIX_EXPONENTS = { k: 3, m: 6, b: 9, t: 12, qa: 15, qu: 18, sx: 21, sp: 24, o: 27, n: 30, d: 33 };
+
+  function parseBigCost(str) {
+    str = String(str).trim();
+    const compact = str.toLowerCase().replace(/\s+/g, '');
+
+    const suffixMatch = compact.match(/^([0-9]*\.?[0-9]+)(k|m|b|t|qa|qu|sx|sp|o|n|d)$/i);
+    if (suffixMatch) {
+      const value = Number(suffixMatch[1]);
+      if (!Number.isFinite(value) || value <= 0) return null;
+      const baseExponent = SUFFIX_EXPONENTS[suffixMatch[2].toLowerCase()];
+      const shift = Math.floor(Math.log10(value));
+      return {
+        mantissa: value / Math.pow(10, shift),
+        exponent: baseExponent + shift,
+        raw: str
+      };
+    }
+
+    const sci = str.match(/^([0-9.]+)e([+-]?[0-9]+)$/i);
+    if (sci) {
+      return {
+        mantissa: parseFloat(sci[1]),
+        exponent: parseInt(sci[2], 10),
+        raw: str
+      };
+    }
+
+    const n = Number(str);
+
+    if (!Number.isFinite(n) || n <= 0) {
+      return null;
+    }
+
+    const exponent = Math.floor(Math.log10(n));
+
+    return {
+      mantissa: n / Math.pow(10, exponent),
+      exponent,
+      raw: str
+    };
+  }
+
+  // ---------- magnitude scale: equal space per decile, equal space per decade ----------
+  function positionFor(cost) {
+    if (!cost) return 0;
+    return cost.exponent + (cost.mantissa - 1) / 9;
+  }
+  function yFor(cost) {
+    return TOP_PAD + (positionFor(cost) - minPos) * pxPerDecade;
+  }
+  // Human-readable decade labels: use short-scale suffixes through 10^33,
+  // then switch to scientific notation at 10^36.
+  const MAG_SUFFIXES = ['', 'k', 'm', 'b', 't', 'qa', 'qu', 'sx', 'sp', 'o', 'n', 'd'];
+
+  function formatAxisMagnitude(exponent) {
+    if (exponent < 36) {
+      const group = Math.floor(exponent / 3);
+      const within = exponent % 3;
+      const suffix = MAG_SUFFIXES[group] || '';
+      return String(Math.pow(10, within)) + suffix;
+    }
+    return '1e' + exponent.toLocaleString();
+  }
+
+  function formatCost(cost) {
+    if (!cost) return '0';
+    return (
+      cost.mantissa.toFixed(2) +
+      'e' +
+      cost.exponent.toLocaleString()
+    );
+  }
+
+
+  // ---------- building the data model from parsed rows ----------
+  function buildFromRows(modRows, connectorRows) {
+    mods = {}; edges = []; boughtLevels = new Set();
+    modRows.forEach(r => {
+      const code = r.Code;
+      if (!code) return;
+      if (!mods[code]) mods[code] = { code, name: r.mod_name || code, type: r.mod_type || 'Unknown', x: parseFloat(r.x) || 0, levels: [] };
+      mods[code].levels.push({
+        level: parseInt(r.mod_level, 10) || 0,
+        cost: parseBigCost(r.cost),
+        image: r.image || ''
+      });
+    });
+    Object.values(mods).forEach(m => m.levels.sort((a, b) => a.level - b.level));
+    connectorRows.forEach(r => {
+      const child = r.Code, parent = r['Unlocked By'];
+      if (child && parent) edges.push({ child, parent });
+    });
+
+    // Root mods start unlocked, but their first plaque is still unbought.
+    // Do not auto-buy level 1: the plaque is the first purchasable level.
+
+
+    layoutAndRender();
+  }
+
+  function isLocked(mod) {
+    const anyBought = mod.levels.some(l => boughtLevels.has(mod.code + ':' + l.level));
+    if (anyBought) return false;
+    const prereqs = edges.filter(e => e.child === mod.code).map(e => e.parent);
+    if (prereqs.length === 0) return false;
+    return !prereqs.some(p => {
+      const pm = mods[p];
+      return pm && pm.levels.some(l => boughtLevels.has(pm.code + ':' + l.level));
+    });
+  }
+
+  function boughtCount(m) {
+    let count = 0;
+    for (let i = 0; i < m.levels.length; i++) {
+      if (boughtLevels.has(m.code + ':' + m.levels[i].level)) count++;
+      else break;
+    }
+    return count;
+  }
+
+  function frontierIndex(m) {
+    // The next unbought level is the moving plaque. Once every level is
+    // bought there is no frontier left.
+    return boughtCount(m);
+  }
+
+  function isPrereqUnlocked(mod) {
+
+    const prereqs = edges.filter(e => e.child === mod.code).map(e => e.parent);
+    if (prereqs.length === 0) return true;
+
+    // A connector is satisfied only when the mod it points to has an
+    // unlocked/bought level. Merely having the parent mod visible is not
+    // enough.
+    return prereqs.some(parentCode => {
+      const parent = mods[parentCode];
+      return parent && parent.levels.some(l =>
+        boughtLevels.has(parent.code + ':' + l.level)
+      );
+    });
+  }
+
+  // ---------- DOM elements per level / per mod ----------
+  let nodeEls = {};    // "code:level" -> element
+  let labelEls = {};   // code -> label element
+  let modAnchorY = {}; // code -> { top, bottom } pixel y of its cheapest/most expensive level
+
+  function layoutAndRender() {
+    chart.innerHTML = '';
+    chart.appendChild(linksSvg);
+    nodeEls = {}; labelEls = {}; modAnchorY = {};
+
+    const allCosts = [];
+    Object.values(mods).forEach(m => m.levels.forEach(l => { if (l.cost) allCosts.push(l.cost); }));
+    if (!allCosts.length) { statusEl.textContent = 'no valid cost values found'; return; }
+
+    const positions = allCosts.map(positionFor);
+    minPos = Math.floor(positions.reduce((a, b) => Math.min(a, b), positions[0]));
+    maxPos = Math.ceil(positions.reduce((a, b) => Math.max(a, b), positions[0]));
+
+    const totalHeight = TOP_PAD + (maxPos - minPos) * pxPerDecade + BOTTOM_PAD;
+    chart.style.height = totalHeight + 'px';
+    linksSvg.style.height = totalHeight + 'px';
+    linksSvg.setAttribute('height', totalHeight);
+
+    // decade gridlines + axis labels
+    for (let p = minPos; p <= maxPos; p++) {
+      const y = TOP_PAD + (p - minPos) * pxPerDecade;
+      const line = document.createElement('div');
+      line.className = 'decade-line';
+      line.style.top = y + 'px';
+      chart.appendChild(line);
+
+      const label = document.createElement('div');
+      label.className = 'decade-label';
+      label.style.top = y + 'px';
+      label.textContent = formatAxisMagnitude(p);
+      chart.appendChild(label);
+
+      if (p < maxPos) {
+        for (let d = 1; d < 9; d++) {
+          const ty = y + (d / 9) * pxPerDecade;
+          const tick = document.createElement('div');
+          tick.className = 'decile-tick';
+          tick.style.top = ty + 'px';
+          chart.appendChild(tick);
+        }
+      }
+    }
+
+    // nodes + labels
+    Object.values(mods).forEach(m => {
+      const label = document.createElement('div');
+      label.className = 'mod-label';
+      label.textContent = m.name;
+      chart.appendChild(label);
+      labelEls[m.code] = label;
+
+      let top = Infinity, bottom = -Infinity;
+
+      m.levels.forEach((l, idx) => {
+        if (!l.cost) return;
+        const y = yFor(l.cost);
+        top = Math.min(top, y); bottom = Math.max(bottom, y);
+
+        // Full plaque at each magnitude boundary (1eN); every other level
+        // starts as a circle. A plaque is only actually unlockable when it is
+        // the current frontier.
+        const isMagnitudeBoundary = Math.abs(l.cost.mantissa - 1) < 1e-9;
+        const isCondensed = !isMagnitudeBoundary;
+
+        const el = document.createElement('div');
+        el.className = isCondensed ? 'level-dot' : 'node';
+        el.style.top = y + 'px';
+        // Full plaques must always render above circles if their vertical
+        // positions are close enough to overlap.
+        el.style.zIndex = isCondensed ? 1 : 10000;
+        el.dataset.code = m.code;
+        el.dataset.level = l.level;
+
+        if (isCondensed) {
+          el.textContent = l.level;
+          el.style.borderColor = 'var(--border-dim)';
+        } else {
+          if (l.image) {
+            const img = document.createElement('img');
+            img.src = l.image;
+            img.onerror = () => { img.remove(); el.style.background = colorFor(m.type); };
+            el.appendChild(img);
+          } else {
+            el.style.background = colorFor(m.type);
+          }
+          const badge = document.createElement('span');
+          badge.className = 'node-level-badge';
+          badge.textContent = 'L' + l.level;
+          el.appendChild(badge);
+        }
+
+        el.addEventListener('click', () => onNodeClick(m, l, el));
+        el.addEventListener('mouseenter', (ev) => showTooltip(ev, m, l));
+        el.addEventListener('mousemove', (ev) => moveTooltip(ev));
+        el.addEventListener('mouseleave', hideTooltip);
+
+        chart.appendChild(el);
+        nodeEls[m.code + ':' + l.level] = el;
+
+        if (boughtLevels.has(m.code + ':' + l.level)) el.classList.add('bought');
+      });
+      modAnchorY[m.code] = { top, bottom };
+    });
+
+    statusEl.textContent = Object.keys(mods).length + ' mods, ' + allCosts.length + ' levels, ' + edges.length + ' connectors';
+    updateVisible();
+  }
+
+  function setLevelShape(el, mod, level, asPlaque, isCompleted = false) {
+    const wasPlaque = el.classList.contains('node');
+    const wasCompleted = el.dataset.completed === 'true';
+    const className = asPlaque ? 'node' : 'level-dot';
+    if ((asPlaque && !wasPlaque) || (!asPlaque && wasPlaque) || (asPlaque && wasPlaque && wasCompleted !== isCompleted)) {
+      el.className = className;
+      el.dataset.completed = isCompleted ? 'true' : 'false';
+      el.innerHTML = '';
+
+      if (asPlaque) {
+        if (level.image) {
+          const img = document.createElement('img');
+          img.src = level.image;
+          img.onerror = () => {
+            img.remove();
+            el.style.background = colorFor(mod.type);
+          };
+          el.appendChild(img);
+        } else {
+          el.style.background = colorFor(mod.type);
+        }
+        const badge = document.createElement('span');
+        badge.className = 'node-level-badge';
+        badge.textContent = (isCompleted ? '★ ' : '') + 'L' + level.level;
+        el.appendChild(badge);
+      } else {
+        el.style.background = '#2a1010';
+        el.textContent = level.level;
+      }
+    }
+    el.dataset.completed = isCompleted ? 'true' : 'false';
+    el.style.zIndex = asPlaque ? 10000 : 1;
+  }
+
+  function onNodeClick(mod, level, el) {
+    const key = mod.code + ':' + level.level;
+    if (boughtLevels.has(key)) return;
+
+    // Only the next unbought level is purchasable. Circles and future plaques
+    // are display-only until they become the moving frontier plaque.
+    const idx = mod.levels.findIndex(l => l.level === level.level);
+    if (idx < 0 || idx !== frontierIndex(mod)) return;
+
+    // Connected mods stay locked until at least one level of their Unlocked By
+    // mod has actually been purchased.
+    if (!isPrereqUnlocked(mod)) return;
+
+    boughtLevels.add(key);
+    updateVisible();
+  }
+
+  function showTooltip(ev, mod, level) {
+    tooltip.style.display = 'block';
+    tooltip.innerHTML = '<strong>' + mod.name + '</strong><br>Level ' + level.level +
+      ' &middot; ' + mod.type + '<br>cost: ' + formatCost(level.cost);
+    moveTooltip(ev);
+  }
+  function moveTooltip(ev) {
+    tooltip.style.left = (ev.clientX + 14) + 'px';
+    tooltip.style.top = (ev.clientY + 14) + 'px';
+  }
+  function hideTooltip() { tooltip.style.display = 'none'; }
+
+  // ---------- viewport-driven column condensing ----------
+  let rafPending = false;
+  function scheduleUpdate() {
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(() => { rafPending = false; updateVisible(); });
+  }
+
+  function updateVisible() {
+    const viewTop = scrollArea.scrollTop;
+    const viewBottom = viewTop + scrollArea.clientHeight;
+    const margin = pxPerDecade * 0.5;
+    const showLocked = showLockedBox.checked;
+
+    const active = Object.values(mods).filter(m => {
+      if (!showLocked && isLocked(m)) return false;
+      const a = modAnchorY[m.code];
+      return a && a.bottom >= viewTop - margin && a.top <= viewBottom + margin;
+    });
+    active.sort((a, b) => a.x - b.x);
+
+    const available = Math.max(0, scrollArea.clientWidth - LEFT_PAD - RIGHT_PAD);
+    const colWidth = active.length ? (available / active.length) : available;
+    const colX = {};
+    active.forEach((m, i) => { colX[m.code] = LEFT_PAD + colWidth * (i + 0.5); });
+    const activeCodes = new Set(active.map(m => m.code));
+
+    Object.values(mods).forEach(m => {
+      const isActive = colX.hasOwnProperty(m.code);
+      const x = isActive ? colX[m.code] : (modAnchorY[m.code] ? undefined : undefined);
+      const frontier = frontierIndex(m);
+      const prereqReady = isPrereqUnlocked(m);
+      m.levels.forEach((l, idx) => {
+        const el = nodeEls[m.code + ':' + l.level];
+        if (!el) return;
+
+        const isBought = boughtLevels.has(m.code + ':' + l.level);
+        const isFrontier = idx === frontier && frontier < m.levels.length;
+        const isMagnitudeBoundary = Math.abs(l.cost.mantissa - 1) < 1e-9;
+        const isCompleted = frontier >= m.levels.length && idx === m.levels.length - 1;
+
+        // Keep level 1 visible as the historical starting point.
+        // Hide all levels below the current frontier except level 1.
+        // Every level at/above the current frontier stays visible:
+        //   - current frontier = plaque
+        //   - future magnitude boundaries = plaques
+        //   - other future levels = circles
+        const asPlaque = isFrontier || isCompleted || (!isBought && isMagnitudeBoundary);
+        const parentEdge = edges.find(e => e.child === m.code);
+        const parentStillVisible = parentEdge ? activeCodes.has(parentEdge.parent) : false;
+        // With the option on, mods that have more than 30 levels in total draw
+        // only 1 in 10 of their circles (levels 10, 20, 30...). Plaques always
+        // draw, and mods with 30 or fewer levels are never thinned.
+        const thinnedOut = thinCirclesBox.checked && !asPlaque && m.levels.length > 30 && (l.level % 10 !== 0);
+        const shouldShowLevel = (l.level === 1 && isBought && parentStillVisible) ||
+          ((idx >= frontier || isCompleted) && !thinnedOut);
+
+        if (isActive && shouldShowLevel) {
+          setLevelShape(el, m, l, asPlaque, isCompleted);
+          // Stacking tiers so the clickable frontier plaque is never covered:
+          // frontier/completed > other (display-only) plaques > circles.
+          el.style.zIndex = (isFrontier || isCompleted) ? 10000 : (asPlaque ? 5000 : 1);
+          el.style.left = colX[m.code] + 'px';
+          el.classList.add('visible');
+
+          // Only the current frontier can be bought, and a connected frontier
+          // is dimmed until its Unlocked By mod has been purchased.
+          const locked = !isBought && (!isFrontier || !prereqReady);
+          el.classList.toggle('locked-level', locked);
+          el.style.cursor = (!locked && isFrontier) ? 'pointer' : 'default';
+        } else {
+          el.classList.remove('visible');
+          el.classList.remove('locked-level');
+          el.style.cursor = 'default';
+        }
+      });
+      const label = labelEls[m.code];
+      if (label) {
+        if (isActive) {
+          label.style.left = colX[m.code] + 'px';
+          label.style.top = yFor(m.levels[0].cost) + 'px';
+          label.classList.add('visible');
+        } else {
+          label.classList.remove('visible');
+        }
+      }
+    });
+
+    drawLinks(active, colX);
+  }
+
+  function drawLinks(active, colX) {
+    linksSvg.innerHTML = '';
+    const activeSet = new Set(active.map(m => m.code));
+
+    // Between-mod prerequisite links (solid).
+    edges.forEach(e => {
+      if (!activeSet.has(e.child) || !activeSet.has(e.parent)) return;
+      const parent = mods[e.parent], child = mods[e.child];
+      if (!parent || !child) return;
+      const px = colX[parent.code], py = modAnchorY[parent.code].top;
+      const cx = colX[child.code], cy = modAnchorY[child.code].top;
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', px); line.setAttribute('y1', py);
+      line.setAttribute('x2', cx); line.setAttribute('y2', cy);
+      linksSvg.appendChild(line);
+    });
+
+    // Within-mod level chain (dotted) — connects every level of a mod, top
+    // to bottom, regardless of whether individual levels render as full
+    // boxes or condensed dots.
+    active.forEach(m => {
+      if (m.levels.length < 2) return;
+      const x = colX[m.code];
+      const a = modAnchorY[m.code];
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', x); line.setAttribute('y1', a.top);
+      line.setAttribute('x2', x); line.setAttribute('y2', a.bottom);
+      line.setAttribute('class', 'mod-chain-line');
+      linksSvg.insertBefore(line, linksSvg.firstChild); // behind the prerequisite links too
+    });
+  }
+
+  function applyBoughtThrough() {
+    const threshold = parseThreshold(boughtThroughInput.value);
+    if (!threshold) {
+      boughtThroughInput.focus();
+      boughtThroughInput.select();
+      return;
+    }
+
+    // This is a display/progression simulation: mark every level whose cost
+    // is at or below the threshold as already purchased. This intentionally
+    // does not alter CSV data or require walking the prerequisite tree first.
+    boughtLevels = new Set();
+    Object.values(mods).forEach(m => {
+      m.levels.forEach(l => {
+        if (costAtOrBelow(l.cost, threshold)) {
+          boughtLevels.add(m.code + ':' + l.level);
+        }
+      });
+    });
+    updateVisible();
+  }
+
+  function clearBoughtThrough() {
+    boughtLevels = new Set();
+    boughtThroughInput.value = '';
+    updateVisible();
+  }
+
+  // ---------- wiring ----------
+  scrollArea.addEventListener('scroll', scheduleUpdate);
+  window.addEventListener('resize', scheduleUpdate);
+  showLockedBox.addEventListener('change', updateVisible);
+  thinCirclesBox.addEventListener('change', updateVisible);
+  applyBoughtThroughBtn.addEventListener('click', applyBoughtThrough);
+  boughtThroughInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') applyBoughtThrough();
+  });
+  clearBoughtThroughBtn.addEventListener('click', clearBoughtThrough);
+  document.getElementById('scaleSlider').addEventListener('input', (e) => {
+    pxPerDecade = parseFloat(e.target.value);
+    layoutAndRender();
+  });
+
+  function readFile(input) {
+    return new Promise((resolve, reject) => {
+      const f = input.files && input.files[0];
+      if (!f) { reject('no file'); return; }
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsText(f);
+    });
+  }
+
+  let pendingModRows = null, pendingConnectorRows = null;
+  function tryBuild() {
+    if (pendingModRows && pendingConnectorRows) {
+      buildFromRows(pendingModRows, pendingConnectorRows);
+      pendingModRows = null; pendingConnectorRows = null;
+    }
+  }
+  document.getElementById('modsFile').addEventListener('change', async (e) => {
+    pendingModRows = parseCsv(await readFile(e.target));
+    if (!pendingConnectorRows) statusEl.textContent = 'mods.csv loaded — waiting on connectors.csv';
+    tryBuild();
+  });
+  document.getElementById('connectorsFile').addEventListener('change', async (e) => {
+    pendingConnectorRows = parseCsv(await readFile(e.target));
+    if (!pendingModRows) statusEl.textContent = 'connectors.csv loaded — waiting on mods.csv';
+    tryBuild();
+  });
+
+  // ---------- synthetic data generator (for testing without real CSVs) ----------
+  function generateSynthetic() {
+    const branchNames = ['Reactor', 'Shard', 'Research', 'Fleet', 'Ascension', 'Loop', 'Array', 'Forge'];
+    const types = Object.keys(trackColors);
+    let modRows = [], connectorRows = [];
+    let counter = 0;
+    function makeMod(name, x, baseCost, nLevels, type) {
+      counter++;
+      const code = 'M' + String(counter).padStart(3, '0');
+      let cost = baseCost;
+      for (let lvl = 1; lvl <= nLevels; lvl++) {
+        modRows.push({ Code: code, mod_name: name, mod_level: lvl, mod_type: type, x: x, cost: cost, image: '' });
+        cost *= (2 + Math.random() * 3);
+      }
+      return code;
+    }
+    const root = makeMod('Root Unlock', 0, 1, 3, 'Cells');
+    let xCounter = 0;
+    branchNames.forEach((label, bi) => {
+      xCounter++;
+      const depth = 2 + Math.floor(Math.random() * 3);
+      let parent = root;
+      let baseCost = 5 + Math.random() * 40;
+      for (let d = 0; d < depth; d++) {
+        const type = types[Math.floor(Math.random() * types.length)];
+        const nLevels = 2 + Math.floor(Math.random() * 6);
+        const code = makeMod(label + ' ' + (d + 1), xCounter + d * 0.3, baseCost, nLevels, type);
+        connectorRows.push({ Code: code, 'Unlocked By': parent });
+        parent = code;
+        baseCost *= 8 + Math.random() * 60;
+        if (Math.random() < 0.35) {
+          xCounter += 0.6;
+          const branchType = types[Math.floor(Math.random() * types.length)];
+          const branchCode = makeMod(label + ' ' + (d + 1) + 'b', xCounter + d * 0.3, baseCost, 2 + Math.floor(Math.random() * 4), branchType);
+          connectorRows.push({ Code: branchCode, 'Unlocked By': parent });
+        }
+      }
+    });
+    return { modRows, connectorRows };
+  }
+
+  document.getElementById('loadSynthetic').addEventListener('click', () => {
+    const { modRows, connectorRows } = generateSynthetic();
+    buildFromRows(modRows, connectorRows);
+  });
+
+  // auto-load synthetic data on first open so the page isn't blank
+  document.getElementById('loadSynthetic').click();
+})();
+</script>
+</body>
+</html>
