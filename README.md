@@ -95,6 +95,3 @@ This is a mockup, not a production tool:
 - Layout and interaction details are still being iterated on; expect rough
   edges.
 
-## License
-
-See [LICENSE](LICENSE).
